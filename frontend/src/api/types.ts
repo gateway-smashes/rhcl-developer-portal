@@ -36,6 +36,11 @@ export interface Plan {
   approvalRequired: boolean;
   active: boolean;
   apiProductId: number | null;
+  /** Recurring price in minor units (cents). 0 = free plan. */
+  priceCents: number;
+  currency: string;
+  /** priceCents > 0 — subscribing needs a successful payment first. */
+  paid: boolean;
 }
 
 export interface Application {
@@ -101,6 +106,58 @@ export interface UsagePoint {
 export interface TopProduct {
   name: string;
   requestCount: number;
+}
+
+// ---- Billing (NMI payment gateway) ----------------------------------------
+
+export type PaymentStatus = "PENDING" | "APPROVED" | "DECLINED" | "ERROR";
+
+export interface BillingConfig {
+  /** Billing feature is configured and surfaced in the UI. */
+  enabled: boolean;
+  /** "mock" = in-process fake gateway; "nmi" = real NMI sandbox calls. */
+  mode: "mock" | "nmi";
+  currency: string;
+  /** Collect.js public tokenization key (empty in mock mode). */
+  tokenizationKey: string;
+}
+
+export interface Payment {
+  id: number;
+  subscriptionId: number | null;
+  applicationPlanId: number | null;
+  amountCents: number;
+  currency: string;
+  status: PaymentStatus;
+  kind: "SUBSCRIPTION" | "RECURRING";
+  gatewayTransactionId: string | null;
+  gatewayMessage: string | null;
+  cardLast4: string | null;
+  cardBrand: string | null;
+  createdAt: string;
+}
+
+export interface PaymentMethod {
+  id: number;
+  cardLast4: string | null;
+  cardBrand: string | null;
+  expMonth: string | null;
+  expYear: string | null;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+/** POST /charge result — carries the one-time credential when the charge
+ *  activated a paid subscription. */
+export interface ChargeResult {
+  payment: Payment;
+  credential: ApiCredential | null;
+}
+
+export interface BillingState {
+  config: BillingConfig;
+  methods: PaymentMethod[];
+  payments: Payment[];
 }
 
 export interface Usage {

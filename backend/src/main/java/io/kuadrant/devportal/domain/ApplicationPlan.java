@@ -35,6 +35,24 @@ public class ApplicationPlan extends PanacheEntity {
 
     public boolean active = true;
 
+    /**
+     * Recurring price in the minor unit of {@link #currency} (e.g. cents).
+     * {@code 0} marks a free plan — subscribing to it needs no payment and keeps
+     * the existing instant/auto-approve behaviour. A positive value makes the
+     * plan "paid": the subscription stays PENDING until a successful charge.
+     */
+    @Column(nullable = false)
+    public long priceCents = 0;
+
+    /** ISO-4217 currency for {@link #priceCents}. */
+    @Column(nullable = false, length = 3)
+    public String currency = "USD";
+
+    /** A paid plan requires a successful payment before it is activated. */
+    public boolean isPaid() {
+        return priceCents > 0;
+    }
+
     /** Optional: product this plan belongs to. Null = global plan. */
     public Long apiProductId;
 

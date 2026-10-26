@@ -4,6 +4,7 @@ import {
   Bell,
   BookOpen,
   Boxes,
+  CreditCard,
   Home,
   Inbox,
   LayoutGrid,
@@ -28,6 +29,7 @@ const NAV: NavItem[] = [
   { to: "/documentation", label: "Documentation", icon: BookOpen },
   { to: "/applications", label: "Applications", icon: Boxes, auth: true },
   { to: "/analytics", label: "Analytics", icon: LineChart, auth: true },
+  { to: "/billing", label: "Billing", icon: CreditCard, auth: true },
   { to: "/settings", label: "Settings", icon: SettingsIcon, auth: true },
 ];
 // Surfaced as a separate "Admin" group below the main nav so reviewers can

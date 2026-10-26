@@ -7,6 +7,8 @@ import io.kuadrant.devportal.domain.ApiKey;
 import io.kuadrant.devportal.domain.ApiProduct;
 import io.kuadrant.devportal.domain.Application;
 import io.kuadrant.devportal.domain.ApplicationPlan;
+import io.kuadrant.devportal.domain.Payment;
+import io.kuadrant.devportal.domain.PaymentMethod;
 import io.kuadrant.devportal.domain.PortalUser;
 import io.kuadrant.devportal.domain.Subscription;
 import io.kuadrant.devportal.rhcl.UsageSummary;
@@ -32,10 +34,11 @@ public final class Dtos {
     }
 
     public record PlanDto(Long id, String name, String description, String tier, int rpmLimit, long dailyQuota,
-            long monthlyQuota, boolean approvalRequired, boolean active, Long apiProductId) {
+            long monthlyQuota, boolean approvalRequired, boolean active, Long apiProductId,
+            long priceCents, String currency, boolean paid) {
         public static PlanDto of(ApplicationPlan p) {
             return new PlanDto(p.id, p.name, p.description, p.tier, p.rpmLimit, p.dailyQuota, p.monthlyQuota,
-                    p.approvalRequired, p.active, p.apiProductId);
+                    p.approvalRequired, p.active, p.apiProductId, p.priceCents, p.currency, p.isPaid());
         }
     }
 
@@ -154,5 +157,50 @@ public final class Dtos {
 
     /** POST result that may carry a one-time credential (auto-approve / approve). */
     public record SubscriptionResultDto(SubscriptionDto subscription, ApiCredentialDto credential) {
+    }
+
+    // ---- Billing (NMI payment gateway) -------------------------------------
+
+    /** Public-ish billing config the frontend needs to load Collect.js. */
+    public record BillingConfigDto(boolean enabled, String mode, String currency, String tokenizationKey) {
+    }
+
+    public record PaymentDto(Long id, Long subscriptionId, Long applicationPlanId, long amountCents, String currency,
+            String status, String kind, String gatewayTransactionId, String gatewayMessage, String cardLast4,
+            String cardBrand, Instant createdAt) {
+        public static PaymentDto of(Payment p) {
+            return new PaymentDto(p.id, p.subscriptionId, p.applicationPlanId, p.amountCents, p.currency,
+                    p.status.name(), p.kind.name(), p.gatewayTransactionId, p.gatewayMessage, p.cardLast4,
+                    p.cardBrand, p.createdAt);
+        }
+    }
+
+    public record PaymentMethodDto(Long id, String cardLast4, String cardBrand, String expMonth, String expYear,
+            boolean isDefault, Instant createdAt) {
+        public static PaymentMethodDto of(PaymentMethod m) {
+            return new PaymentMethodDto(m.id, m.cardLast4, m.cardBrand, m.expMonth, m.expYear, m.isDefault,
+                    m.createdAt);
+        }
+    }
+
+    public record BillingStateDto(BillingConfigDto config, List<PaymentMethodDto> methods,
+            List<PaymentDto> payments) {
+    }
+
+    /**
+     * Collect.js token + the subscription whose plan price to charge.
+     * {@code cardLast4}/{@code cardBrand} are the masked display values from the
+     * Collect.js tokenization response (never the PAN) — stored for the receipt.
+     */
+    public record ChargeRequest(@NotNull Long subscriptionId, @NotBlank String paymentToken, boolean saveCard,
+            String cardLast4, String cardBrand) {
+    }
+
+    public record SaveCardRequest(@NotBlank String paymentToken, String cardLast4, String cardBrand,
+            String expMonth, String expYear) {
+    }
+
+    /** Charge outcome; {@code credential} is non-null when the charge activated a subscription. */
+    public record ChargeResultDto(PaymentDto payment, ApiCredentialDto credential) {
     }
 }

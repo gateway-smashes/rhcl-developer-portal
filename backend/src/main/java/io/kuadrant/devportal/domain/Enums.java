@@ -55,4 +55,24 @@ public final class Enums {
         REST,
         MCP
     }
+
+    /**
+     * Result of a billing charge against the payment gateway (NMI). Mirrors the
+     * gateway's {@code response} code: 1 → {@link #APPROVED}, 2 → {@link #DECLINED},
+     * 3 → {@link #ERROR}. {@link #PENDING} is the pre-submission state.
+     */
+    public enum PaymentStatus {
+        PENDING,
+        APPROVED,
+        DECLINED,
+        ERROR
+    }
+
+    /** Kind of billing movement recorded in the ledger. */
+    public enum PaymentKind {
+        /** First charge that activates a paid subscription. */
+        SUBSCRIPTION,
+        /** A later recurring charge of the same plan. */
+        RECURRING
+    }
 }

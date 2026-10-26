@@ -17,6 +17,7 @@ import { api } from "../api/client";
 import { PageHeader } from "../components/AppShell";
 import { Badge, Button, Card, CardBody, Skeleton, Tabs } from "../components/ui";
 import { productVisual } from "../lib/products";
+import { formatMoney } from "../components/PaymentForm";
 import type { Plan } from "../api/types";
 
 const REST_TABS = ["Overview", "APIs", "Plans", "Getting Started", "Changelog", "Support"];
@@ -196,14 +197,15 @@ function PlansTab({ plans, onPick }: { plans: Plan[]; onPick: () => void }) {
               </div>
               <div className="mt-3">
                 <span className="text-3xl font-extrabold text-slate-900">
-                  {p.rpmLimit === 0 ? "∞" : p.rpmLimit.toLocaleString()}
+                  {p.paid ? formatMoney(p.priceCents, p.currency) : "Free"}
                 </span>
-                <span className="text-sm text-slate-400"> RPM</span>
+                {p.paid && <span className="text-sm text-slate-400"> /mo</span>}
               </div>
               <ul className="mt-4 space-y-2 text-sm text-slate-600">
+                <Li>{p.rpmLimit === 0 ? "Unlimited RPM" : `${p.rpmLimit.toLocaleString()} RPM`}</Li>
                 <Li>{p.dailyQuota > 0 ? `${p.dailyQuota.toLocaleString()} req/day` : "Unlimited daily"}</Li>
                 <Li>{p.monthlyQuota > 0 ? `${p.monthlyQuota.toLocaleString()} req/month` : "Unlimited monthly"}</Li>
-                <Li>{p.approvalRequired ? "Manual approval" : "Instant approval"}</Li>
+                <Li>{p.paid ? "Activates on payment" : p.approvalRequired ? "Manual approval" : "Instant approval"}</Li>
                 <Li>Sandbox &amp; Production</Li>
               </ul>
               <Button className="mt-5 w-full" variant={recommended ? "primary" : "secondary"} onClick={onPick}>

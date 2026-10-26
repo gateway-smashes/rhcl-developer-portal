@@ -4,7 +4,11 @@ import type {
   ApiCredential,
   ApiProduct,
   Application,
+  BillingConfig,
+  BillingState,
+  ChargeResult,
   Plan,
+  PaymentMethod,
   Profile,
   Subscription,
   SubscriptionResult,
@@ -84,6 +88,63 @@ export function useRotateKey() {
     mutationFn: (subscriptionId: number) =>
       api.post<ApiCredential>(`/api/me/subscriptions/${subscriptionId}/rotate-key`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
+  });
+}
+
+// ---- Billing (NMI) ---------------------------------------------------------
+export const useBillingConfig = () =>
+  useQuery({
+    queryKey: ["billing", "config"],
+    queryFn: () => api.get<BillingConfig>("/api/me/billing/config"),
+    staleTime: 5 * 60_000,
+  });
+
+export const useBilling = () =>
+  useQuery({ queryKey: ["billing"], queryFn: () => api.get<BillingState>("/api/me/billing") });
+
+/** Charge a subscription's plan price with a Collect.js payment token.
+ *  On approval the backend activates the subscription and returns the key. */
+export function useChargeSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { subscriptionId: number; paymentToken: string; saveCard?: boolean }) =>
+      api.post<ChargeResult>("/api/me/billing/charge", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["billing"] });
+      qc.invalidateQueries({ queryKey: ["subscriptions"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+/** Save a card to the NMI Customer Vault for later recurring charges. */
+export function useSaveCard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { paymentToken: string }) =>
+      api.post<PaymentMethod>("/api/me/billing/methods", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["billing"] }),
+  });
+}
+
+export function useRemoveCard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>(`/api/me/billing/methods/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["billing"] }),
+  });
+}
+
+/** Run a recurring charge of the subscription's plan against the saved card. */
+export function useChargeRecurring() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (subscriptionId: number) =>
+      api.post<ChargeResult>(`/api/me/billing/subscriptions/${subscriptionId}/renew`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["billing"] });
+      qc.invalidateQueries({ queryKey: ["subscriptions"] });
+    },
   });
 }
 

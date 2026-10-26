@@ -10,6 +10,7 @@ import Subscribe from "./pages/Subscribe";
 import Applications from "./pages/Applications";
 import ApplicationDetail from "./pages/ApplicationDetail";
 import Analytics from "./pages/Analytics";
+import Billing from "./pages/Billing";
 import Documentation from "./pages/Documentation";
 import Settings from "./pages/Settings";
 import AdminApis from "./pages/admin/AdminApis";
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="/applications" element={<RequireAuth><Applications /></RequireAuth>} />
         <Route path="/applications/:id" element={<RequireAuth><ApplicationDetail /></RequireAuth>} />
         <Route path="/analytics" element={<RequireAuth><Analytics /></RequireAuth>} />
+        <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
         {/* Administration — reachable from Settings, not in the primary nav. */}
         <Route path="/admin/apis" element={<RequireAuth requires="canPublishApi"><AdminApis /></RequireAuth>} />

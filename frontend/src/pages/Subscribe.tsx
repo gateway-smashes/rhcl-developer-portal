@@ -6,21 +6,24 @@ import {
   useApiPlans,
   useApis,
   useApplications,
+  useBillingConfig,
+  useChargeSubscription,
   useCreateApplication,
   useProfile,
   useSubscribe,
 } from "../api/hooks";
 import { usePortalAuth } from "../auth/auth";
 import { Badge, Button, Card, CardBody, cx, Field, Input, Select, Spinner } from "../components/ui";
-import type { ApiCredential, ApiProduct, Application, Plan } from "../api/types";
+import type { ApiCredential, ApiProduct, Application, BillingConfig, Plan, Subscription } from "../api/types";
 import { productVisual } from "../lib/products";
+import PaymentForm, { formatMoney, type TokenizedCard } from "../components/PaymentForm";
 
 // Wizard shape:
 //   - From /products/:id/subscribe → start at "Select Application" (product is fixed).
 //   - From /applications/new       → start at "Choose API Product" so the user
 //     picks which API they're building against before everything else.
-const STEPS_WITH_PRODUCT = ["Choose Product", "Select Application", "Choose Plan", "Review", "API Key"];
-const STEPS_WITHOUT_PRODUCT = ["Select Application", "Choose Plan", "Review", "API Key"];
+//   - A "Payment" step is inserted before "API Key" only when the chosen plan
+//     is paid (priceCents > 0) — the subscription must be charged to activate.
 
 export default function Subscribe() {
   const { id } = useParams();
@@ -37,16 +40,29 @@ export default function Subscribe() {
   const { data: plans } = useApiPlans(pid ?? 0);
   const { data: apps } = useApplications();
   const { data: profile } = useProfile();
+  const { data: billingConfig } = useBillingConfig();
   const subscribe = useSubscribe();
+  const charge = useChargeSubscription();
 
   const [step, setStep] = useState(0);
   const [appId, setAppId] = useState<number | null>(null);
   const [planId, setPlanId] = useState<number | null>(null);
   const [credential, setCredential] = useState<ApiCredential | null>(null);
   const [pending, setPending] = useState(false);
+  const [createdSub, setCreatedSub] = useState<Subscription | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
 
   const app = apps?.find((a) => a.id === appId);
   const plan = plans?.find((p) => p.id === planId);
+  const paid = !!plan?.paid;
+
+  // Dynamic step list — the Payment step only exists for a paid plan.
+  const steps = useMemo(() => {
+    const base = productPicker
+      ? ["Choose Product", "Select Application", "Choose Plan", "Review"]
+      : ["Select Application", "Choose Plan", "Review"];
+    return [...base, ...(paid ? ["Payment"] : []), "API Key"];
+  }, [productPicker, paid]);
 
   // Pre-select an existing plan when the user already subscribes to this
   // (product, application) — so re-running the wizard "remembers" the prior
@@ -63,14 +79,41 @@ export default function Subscribe() {
     if (existingPlanId && planId == null) setPlanId(existingPlanId);
   }, [existingPlanId, planId]);
 
-  // Step index → meaning. When productPicker is on, every later step shifts
-  // by one; this getter centralises the math so step bodies stay readable.
-  const stepKind = (i: number): string => (productPicker ? STEPS_WITH_PRODUCT : STEPS_WITHOUT_PRODUCT)[i];
-  const lastStep = (productPicker ? STEPS_WITH_PRODUCT : STEPS_WITHOUT_PRODUCT).length - 1;
+  const stepKind = (i: number): string => steps[i];
+  const lastStep = steps.length - 1;
 
+  // Review → create the subscription. Free plans finish here (key or pending
+  // approval). Paid plans stay PENDING and advance to the Payment step, which
+  // charges them and — on approval — returns the key.
   const submit = async () => {
     if (!appId || !planId || !pid) return;
     const res = await subscribe.mutateAsync({ apiProductId: pid, applicationId: appId, applicationPlanId: planId });
+    if (paid) {
+      setCreatedSub(res.subscription);
+      setStep(steps.indexOf("Payment"));
+    } else if (res.credential) {
+      setCredential(res.credential);
+      setStep(lastStep);
+    } else {
+      setPending(true);
+      setStep(lastStep);
+    }
+  };
+
+  const pay = async (card: TokenizedCard) => {
+    if (!createdSub) return;
+    setPayError(null);
+    const res = await charge.mutateAsync({
+      subscriptionId: createdSub.id,
+      paymentToken: card.token,
+      saveCard: true,
+      cardLast4: card.last4 ?? undefined,
+      cardBrand: card.brand ?? undefined,
+    } as never);
+    if (res.payment.status !== "APPROVED") {
+      setPayError(`Payment ${res.payment.status.toLowerCase()}: ${res.payment.gatewayMessage ?? "declined"}`);
+      return;
+    }
     if (res.credential) setCredential(res.credential);
     else setPending(true);
     setStep(lastStep);
@@ -85,7 +128,7 @@ export default function Subscribe() {
         <ArrowLeft size={16} /> {urlPid ? product?.displayName ?? "Product" : "Applications"}
       </Link>
 
-      <Stepper steps={productPicker ? STEPS_WITH_PRODUCT : STEPS_WITHOUT_PRODUCT} step={step} />
+      <Stepper steps={steps} step={step} />
 
       <div className="mt-7 animate-fade-up">
         {stepKind(step) === "Choose Product" && (
@@ -105,6 +148,15 @@ export default function Subscribe() {
             submitting={subscribe.isPending}
             onBack={() => setStep(step - 1)}
             onConfirm={submit}
+          />
+        )}
+        {stepKind(step) === "Payment" && (
+          <StepPayment
+            plan={plan}
+            config={billingConfig}
+            submitting={charge.isPending}
+            error={payError}
+            onToken={pay}
           />
         )}
         {stepKind(step) === "API Key" && (
@@ -342,12 +394,13 @@ function StepPlan({
                   <Badge tone={p.tier}>{p.tier}</Badge>
                 </div>
                 <div className="mt-2 text-2xl font-extrabold text-slate-900">
-                  {p.rpmLimit === 0 ? "∞" : p.rpmLimit.toLocaleString()}
-                  <span className="text-xs font-medium text-slate-400"> RPM</span>
+                  {p.paid ? formatMoney(p.priceCents, p.currency) : "Free"}
+                  {p.paid && <span className="text-xs font-medium text-slate-400"> /mo</span>}
                 </div>
                 <ul className="mt-2 space-y-1 text-xs text-slate-500">
-                  <li>{p.dailyQuota > 0 ? `${p.dailyQuota.toLocaleString()}/day` : "Unlimited"}</li>
-                  <li>{p.approvalRequired ? "Manual approval" : "Instant approval"}</li>
+                  <li>{p.rpmLimit === 0 ? "Unlimited RPM" : `${p.rpmLimit.toLocaleString()} RPM`}</li>
+                  <li>{p.dailyQuota > 0 ? `${p.dailyQuota.toLocaleString()}/day` : "Unlimited daily"}</li>
+                  <li>{p.paid ? "Activates on payment" : p.approvalRequired ? "Manual approval" : "Instant approval"}</li>
                 </ul>
               </button>
             );
@@ -389,8 +442,12 @@ function StepReview({
           <Row label="Product" value={product?.displayName} />
           <Row label="Application" value={app?.name} />
           <Row label="Plan" value={<Badge tone={plan?.tier}>{plan?.name}</Badge>} />
+          <Row
+            label="Price"
+            value={plan ? (plan.paid ? `${formatMoney(plan.priceCents, plan.currency)}/mo` : "Free") : "—"}
+          />
           <Row label="Limit" value={plan ? (plan.rpmLimit === 0 ? "Unlimited" : `${plan.rpmLimit} RPM`) : "—"} />
-          <Row label="Approval" value={plan?.approvalRequired ? "Manual" : "Instant"} />
+          <Row label="Approval" value={plan?.paid ? "On payment" : plan?.approvalRequired ? "Manual" : "Instant"} />
           <Row label="Environment" value={app?.environment} />
         </dl>
         <div className="mt-6 flex justify-between">
@@ -398,7 +455,7 @@ function StepReview({
             <ArrowLeft size={15} /> Back
           </Button>
           <Button onClick={onConfirm} disabled={submitting}>
-            {submitting ? "Submitting…" : "Confirm subscription"}
+            {submitting ? "Submitting…" : plan?.paid ? "Continue to payment" : "Confirm subscription"}
           </Button>
         </div>
       </CardBody>
@@ -411,6 +468,45 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="text-slate-500">{label}</dt>
       <dd className="font-medium text-slate-800">{value ?? "—"}</dd>
     </div>
+  );
+}
+
+function StepPayment({
+  plan,
+  config,
+  submitting,
+  error,
+  onToken,
+}: {
+  plan?: Plan;
+  config?: BillingConfig;
+  submitting: boolean;
+  error: string | null;
+  onToken: (card: TokenizedCard) => void;
+}) {
+  if (!plan) return <Spinner />;
+  const price = formatMoney(plan.priceCents, plan.currency);
+  return (
+    <Card>
+      <CardBody>
+        <h2 className="text-lg font-bold text-slate-900">Payment</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          Activate the <span className="font-semibold capitalize">{plan.name}</span> plan — {price}/month.
+        </p>
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <span className="text-sm text-slate-600">Due today</span>
+          <span className="text-lg font-extrabold text-slate-900">{price}</span>
+        </div>
+        {error && (
+          <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
+        )}
+        {config ? (
+          <PaymentForm config={config} submitLabel={`Pay ${price} & activate`} submitting={submitting} onToken={onToken} />
+        ) : (
+          <Spinner />
+        )}
+      </CardBody>
+    </Card>
   );
 }
 

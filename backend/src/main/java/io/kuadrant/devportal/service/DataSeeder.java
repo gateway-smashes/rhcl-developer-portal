@@ -65,9 +65,9 @@ public class DataSeeder {
         banking.rhclRef = "rhcl-apps/banking-api";
         banking.persist();
 
-        seedPlan(banking.id, "Gold", "Unlimited tier for trusted consumers.", "gold", 0, 0, 0, true);
-        seedPlan(banking.id, "Silver", "50 requests/minute.", "silver", 50, 50_000, 1_000_000, true);
-        seedPlan(banking.id, "Bronze", "10 requests/minute — good for getting started.", "bronze", 10, 5_000, 100_000, false);
+        seedPlan(banking.id, "Gold", "Unlimited tier for trusted consumers.", "gold", 0, 0, 0, false, 19_900);
+        seedPlan(banking.id, "Silver", "50 requests/minute.", "silver", 50, 50_000, 1_000_000, false, 4_900);
+        seedPlan(banking.id, "Bronze", "10 requests/minute — good for getting started.", "bronze", 10, 5_000, 100_000, false, 0);
 
         // A second, beta product to make the catalog feel real.
         ApiProduct payments = new ApiProduct();
@@ -84,7 +84,7 @@ public class DataSeeder {
         payments.contactTeam = "Payments Squad";
         payments.contactEmail = "payments@example.com";
         payments.persist();
-        seedPlan(payments.id, "Free", "Auto-approved sandbox tier.", "bronze", 10, 1_000, 10_000, false);
+        seedPlan(payments.id, "Free", "Auto-approved sandbox tier.", "bronze", 10, 1_000, 10_000, false, 0);
 
         LOG.info("Seed complete.");
     }
@@ -100,7 +100,7 @@ public class DataSeeder {
     }
 
     private void seedPlan(Long productId, String name, String desc, String tier, int rpm, long daily,
-            long monthly, boolean approvalRequired) {
+            long monthly, boolean approvalRequired, long priceCents) {
         ApplicationPlan p = new ApplicationPlan();
         p.apiProductId = productId;
         p.name = name;
@@ -110,6 +110,8 @@ public class DataSeeder {
         p.dailyQuota = daily;
         p.monthlyQuota = monthly;
         p.approvalRequired = approvalRequired;
+        p.priceCents = priceCents;
+        p.currency = "USD";
         p.active = true;
         p.persist();
     }

@@ -78,11 +78,33 @@ public class SubscriptionService {
         audit.record("subscription.created", user.username, "subscription", String.valueOf(sub.id),
                 "product=" + product.name + " plan=" + plan.tier);
 
-        boolean autoApprove = product.approvalMode == ApprovalMode.AUTOMATIC && !plan.approvalRequired;
+        // A paid plan never activates on creation — it waits for a successful
+        // charge (see BillingService#payForSubscription → activateAfterPayment).
+        boolean autoApprove = product.approvalMode == ApprovalMode.AUTOMATIC
+                && !plan.approvalRequired && !plan.isPaid();
         if (autoApprove) {
             doApprove(sub, "system(auto)");
         }
         return sub;
+    }
+
+    /**
+     * Activate a pending subscription once its plan has been paid for. Invoked
+     * by {@link io.kuadrant.devportal.service.BillingService} after the gateway
+     * approves the charge, on the same request thread — the freshly minted key
+     * is stashed in {@link #LAST_PLAINTEXT} for the resource to return once via
+     * {@link #consumeLastCredential()}, exactly like the admin-approval path.
+     */
+    @Transactional
+    public void activateAfterPayment(Long subscriptionId, String reviewer) {
+        Subscription sub = findOrThrow(subscriptionId);
+        if (sub.status == SubscriptionStatus.APPROVED) {
+            return; // already activated — treat a repeat charge as a renewal, not a re-key
+        }
+        if (sub.status != SubscriptionStatus.PENDING) {
+            throw new BadRequestException("Subscription is not pending: " + sub.status);
+        }
+        doApprove(sub, reviewer);
     }
 
     /** Approve a pending subscription and provision its key. Admin/owner only. */
