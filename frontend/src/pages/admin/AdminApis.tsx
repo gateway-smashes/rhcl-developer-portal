@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Eye, EyeOff, Plus } from "lucide-react";
 import { useApis, useCreateApi, useUpdateApi } from "../../api/hooks";
-import { PageHeader } from "../../components/Layout";
+import { PageHeader } from "../../components/AppShell";
 import { Badge, Button, Card, CardBody, Field, Input, Select, Spinner, Textarea } from "../../components/ui";
 import type { ApiProduct } from "../../api/types";
 

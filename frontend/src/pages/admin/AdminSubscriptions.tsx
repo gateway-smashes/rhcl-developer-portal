@@ -5,7 +5,7 @@ import {
   useRejectSubscription,
   useSuspendSubscription,
 } from "../../api/hooks";
-import { PageHeader } from "../../components/Layout";
+import { PageHeader } from "../../components/AppShell";
 import { Badge, Button, Card, EmptyState, Select, Spinner } from "../../components/ui";
 import CredentialDialog from "../../components/CredentialDialog";
 import type { ApiCredential } from "../../api/types";

@@ -1,5 +1,5 @@
 import { usePlans } from "../../api/hooks";
-import { PageHeader } from "../../components/Layout";
+import { PageHeader } from "../../components/AppShell";
 import { Badge, Card, Spinner } from "../../components/ui";
 
 export default function AdminPlans() {

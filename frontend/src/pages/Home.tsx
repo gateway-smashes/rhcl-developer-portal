@@ -286,7 +286,7 @@ function QuickStartCard({ products }: { products: { id: number; displayName: str
   const [copied, setCopied] = useState(false);
   const product = products[sel];
   const base = product?.baseUrl ?? "https://sandbox.api.example.com";
-  const curl = `curl ${base}/accounts \\\n  -H "X-API-Key: sk_test_••••••••" \\\n  -H "Content-Type: application/json"`;
+  const curl = `curl ${base}/accounts \\\n  -H "api-key: bk_live_••••••••" \\\n  -H "Content-Type: application/json"`;
   return (
     <Card elevation={2}>
       <CardBody>
@@ -304,9 +304,11 @@ function QuickStartCard({ products }: { products: { id: number; displayName: str
               </option>
             ))}
           </select>
-          <Button size="sm">
-            <KeyRound size={14} /> Get sandbox key
-          </Button>
+          <Link to={product ? `/products/${product.id}/subscribe` : "/products"}>
+            <Button size="sm">
+              <KeyRound size={14} /> Get sandbox key
+            </Button>
+          </Link>
         </div>
         <div className="relative mt-3 rounded-xl bg-ink-900 p-4">
           <button

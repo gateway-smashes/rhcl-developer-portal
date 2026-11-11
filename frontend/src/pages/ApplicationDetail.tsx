@@ -10,7 +10,6 @@ import {
   KeyRound,
   RefreshCw,
   Send,
-  Settings as SettingsIcon,
   ShieldAlert,
   Sparkles,
   TrendingUp,
@@ -135,6 +134,44 @@ export default function ApplicationDetail() {
     return ev.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 5);
   }, [subs]);
 
+  // ---- Insights derived from real usage. With no traffic we show a
+  // single honest "no data" card rather than canned affirmations. ----
+  const insights: { tone: "positive" | "warning" | "neutral"; icon: React.ReactNode; title: string; detail: string }[] =
+    (() => {
+      if (!usage || usage.totalRequests === 0) {
+        return [
+          {
+            tone: "neutral" as const,
+            icon: <Activity size={18} />,
+            title: "No traffic yet",
+            detail: "Make your first API call with an issued key to populate usage insights.",
+          },
+        ];
+      }
+      const successNum = (usage.successCount / usage.totalRequests) * 100;
+      const errorNum = ((usage.error4xxCount + usage.error5xxCount) / usage.totalRequests) * 100;
+      return [
+        {
+          tone: successNum >= 99 ? "positive" : successNum >= 95 ? "neutral" : "warning",
+          icon: <CheckCircle2 size={18} />,
+          title: "Success rate",
+          detail: `${successNum.toFixed(1)}% of requests returned 2xx/3xx in this window.`,
+        },
+        {
+          tone: errorNum < 1 ? "positive" : errorNum < 5 ? "neutral" : "warning",
+          icon: <Activity size={18} />,
+          title: "Error rate",
+          detail: `${errorNum.toFixed(1)}% errors (${compact(usage.error4xxCount)} 4xx · ${compact(usage.error5xxCount)} 5xx).`,
+        },
+        {
+          tone: rateLimitPct > 80 ? "warning" : "neutral",
+          icon: <Sparkles size={18} />,
+          title: "Rate limit usage",
+          detail: `${rateLimitPct}% of your plan's rate limit consumed.`,
+        },
+      ];
+    })();
+
   return (
     <>
       {/* ---------- Back link ---------- */}
@@ -166,38 +203,34 @@ export default function ApplicationDetail() {
         </div>
         <div className="flex items-center gap-2">
           <Badge tone={health.tone}>● {health.label}</Badge>
-          <Button variant="secondary">
-            <SettingsIcon size={14} /> Application settings
-          </Button>
         </div>
       </div>
 
       {/* ---------- 5 KPI cards ---------- */}
       <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+        {/* Deltas intentionally omitted: there's no prior-period baseline to
+            compare against, so a trend arrow here would be fabricated. The
+            sparkline shows the real in-window shape. */}
         <Stat
           label="Requests today"
           value={usage ? compact(usage.totalRequests) : "—"}
-          delta={usage ? { value: "24.6%", up: true } : undefined}
           sparkline={reqSpark}
         />
         <Stat
           label="Success rate"
           value={successRate === "—" ? "—" : `${successRate}%`}
-          delta={successRate !== "—" ? { value: "1.2%", up: true } : undefined}
           sparkline={reqSpark}
           sparklineColor="#10b981"
         />
         <Stat
           label="Errors"
           value={errorRate === "—" ? "—" : `${errorRate}%`}
-          delta={errorRate !== "—" ? { value: "12.1%", up: false } : undefined}
           sparkline={blockedSpark}
           sparklineColor="#ef4444"
         />
         <Stat
           label="Avg. latency"
           value={usage ? `${usage.avgLatencyMs.toFixed(0)} ms` : "—"}
-          delta={usage ? { value: "8.3%", up: false } : undefined}
           sparkline={reqSpark}
           sparklineColor="#f59e0b"
         />
@@ -404,26 +437,11 @@ export default function ApplicationDetail() {
         </Card>
       </section>
 
-      {/* ---------- Insights row ---------- */}
+      {/* ---------- Insights row (derived from real usage) ---------- */}
       <section className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <InsightCard
-          tone="positive"
-          icon={<CheckCircle2 size={18} />}
-          title="Healthy usage"
-          detail="Your application usage is within the expected range."
-        />
-        <InsightCard
-          tone="positive"
-          icon={<Activity size={18} />}
-          title="Low error rate"
-          detail="Great! Your error rate is lower than the platform average."
-        />
-        <InsightCard
-          tone={rateLimitPct > 80 ? "warning" : "neutral"}
-          icon={<Sparkles size={18} />}
-          title="Rate limit usage"
-          detail={`${rateLimitPct}% of your rate limit consumed. You're good to go.`}
-        />
+        {insights.map((it) => (
+          <InsightCard key={it.title} tone={it.tone} icon={it.icon} title={it.title} detail={it.detail} />
+        ))}
       </section>
 
       {cred && <CredentialDialog credential={cred} onClose={() => setCred(null)} />}

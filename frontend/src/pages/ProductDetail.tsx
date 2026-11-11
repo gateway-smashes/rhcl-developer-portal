@@ -5,11 +5,8 @@ import {
   BookOpen,
   Check,
   ChevronRight,
-  Globe,
   Rocket,
-  ShieldCheck,
   Star,
-  Zap,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useApi, useApiPlans } from "../api/hooks";
@@ -17,7 +14,7 @@ import { api } from "../api/client";
 import { PageHeader } from "../components/AppShell";
 import { Badge, Button, Card, CardBody, Skeleton, Tabs } from "../components/ui";
 import { productVisual } from "../lib/products";
-import type { Plan } from "../api/types";
+import type { ApiProduct, Plan } from "../api/types";
 
 const REST_TABS = ["Overview", "APIs", "Plans", "Getting Started", "Changelog", "Support"];
 // MCP swaps "APIs" (which would imply REST endpoints) for "Tools" (the MCP
@@ -80,7 +77,7 @@ export default function ProductDetail() {
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
       <div className="mt-6 animate-fade-up">
         {tab === "Overview" && <Overview product={p} />}
-        {tab === "APIs" && <ApisTab product={p} />}
+        {tab === "APIs" && <ApisTab product={p} productId={pid} />}
         {tab === "Tools" && <McpToolsTab productId={pid} />}
         {tab === "Connect" && <McpConnectTab product={p} />}
         {tab === "Playground" && <McpPlaygroundTab productId={pid} />}
@@ -105,28 +102,29 @@ function Meta({ children, tone }: { children: React.ReactNode; tone?: string }) 
   );
 }
 
-const CAPS = [
-  { icon: Globe, label: "Account Information" },
-  { icon: Zap, label: "Balances" },
-  { icon: ShieldCheck, label: "Transactions" },
-  { icon: Rocket, label: "Payments" },
-];
-
-function Overview({ product }: { product: { description: string; baseUrl: string; contactTeam: string } }) {
+function Overview({ product }: { product: ApiProduct }) {
+  const tags = product.tags ?? [];
   return (
     <div className="grid gap-5 lg:grid-cols-3">
       <Card className="lg:col-span-2">
         <CardBody>
           <h3 className="font-bold text-slate-900">About this product</h3>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">{product.description}</p>
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {CAPS.map((c) => (
-              <div key={c.label} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-center">
-                <c.icon size={20} className="mx-auto text-brand-500" />
-                <div className="mt-2 text-xs font-medium text-slate-600">{c.label}</div>
+          {tags.length > 0 && (
+            <>
+              <h4 className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-500">Capabilities</h4>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {tags.map((t) => (
+                  <span
+                    key={t}
+                    className="rounded-full bg-brand-50 px-3 py-1 text-xs font-medium capitalize text-brand-700 ring-1 ring-brand-100"
+                  >
+                    {t}
+                  </span>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </CardBody>
       </Card>
       <div className="space-y-5">
@@ -137,7 +135,9 @@ function Overview({ product }: { product: { description: string; baseUrl: string
               {product.baseUrl}
             </code>
             <h4 className="mt-4 text-sm font-semibold text-slate-700">Authentication</h4>
-            <p className="mt-1 text-sm text-slate-500">API Key (Header) · <span className="font-mono">X-API-Key</span></p>
+            <p className="mt-1 text-sm text-slate-500">
+              API Key (Header) · <span className="font-mono">api-key</span>
+            </p>
           </CardBody>
         </Card>
       </div>
@@ -145,22 +145,66 @@ function Overview({ product }: { product: { description: string; baseUrl: string
   );
 }
 
-function ApisTab({ product }: { product: { baseUrl: string } }) {
-  const endpoints = [
-    { m: "GET", path: "/accounts" },
-    { m: "GET", path: "/accounts/{id}/balances" },
-    { m: "GET", path: "/transactions" },
-    { m: "POST", path: "/payments" },
-  ];
+interface OpenApiSpec {
+  paths?: Record<string, Record<string, unknown>>;
+}
+
+const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "head", "options"];
+
+/** Fetch the (server-proxied) OpenAPI spec so the APIs tab lists real paths. */
+function useOpenApiSpec(productId: number) {
+  return useQuery({
+    queryKey: ["openapi", productId],
+    queryFn: () => api.get<OpenApiSpec>(`/api/catalog/apis/${productId}/openapi`),
+    retry: false, // a 404 just means no spec is registered — don't hammer it
+  });
+}
+
+function ApisTab({ product, productId }: { product: { baseUrl: string }; productId: number }) {
+  const { data: spec, isLoading, isError } = useOpenApiSpec(productId);
+
+  const endpoints: { m: string; path: string }[] = [];
+  if (spec?.paths) {
+    for (const [path, ops] of Object.entries(spec.paths)) {
+      for (const method of Object.keys(ops ?? {})) {
+        if (HTTP_METHODS.includes(method.toLowerCase())) {
+          endpoints.push({ m: method.toUpperCase(), path });
+        }
+      }
+    }
+  }
+
+  if (isLoading) return <Skeleton className="h-40" />;
+
+  // No spec registered (404) or endpoints empty — degrade to a clear,
+  // honest state instead of a hardcoded banking endpoint list.
+  if (isError || endpoints.length === 0) {
+    return (
+      <Card>
+        <CardBody>
+          <p className="text-sm text-slate-500">
+            No machine-readable endpoint list is available for this product yet. Open the{" "}
+            <span className="font-semibold text-slate-700">Documentation</span> tab for the full
+            interactive API reference.
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardBody>
         <div className="divide-y divide-slate-100">
-          {endpoints.map((e) => (
-            <div key={e.path} className="flex items-center gap-3 py-3">
+          {endpoints.map((e, i) => (
+            <div key={`${e.m}-${e.path}-${i}`} className="flex items-center gap-3 py-3">
               <span
-                className={`w-14 rounded-md px-2 py-0.5 text-center text-[11px] font-bold ${
-                  e.m === "GET" ? "bg-emerald-50 text-emerald-700" : "bg-brand-50 text-brand-700"
+                className={`w-16 rounded-md px-2 py-0.5 text-center text-[11px] font-bold ${
+                  e.m === "GET"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : e.m === "DELETE"
+                    ? "bg-rose-50 text-rose-700"
+                    : "bg-brand-50 text-brand-700"
                 }`}
               >
                 {e.m}
@@ -170,7 +214,8 @@ function ApisTab({ product }: { product: { baseUrl: string } }) {
           ))}
         </div>
         <p className="mt-4 text-xs text-slate-400">
-          Full reference at <span className="font-mono">{product.baseUrl}</span> — open the Documentation tab to try it out.
+          Derived from the published OpenAPI spec · base URL{" "}
+          <span className="font-mono">{product.baseUrl}</span> — open the Documentation tab to try it out.
         </p>
       </CardBody>
     </Card>
