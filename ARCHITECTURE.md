@@ -17,7 +17,7 @@ The portal is a classic SPA + API backend, with a single seam to the cluster:
                                                   └──────────────────┘                            │
                                                   ┌───────────────────────────────────────────────┘
                                                   ▼
-                              RHCL / Kuadrant: APIProduct · PlanPolicy · APIKeyRequest · APIKey
+                              RHCL / Kuadrant: APIProduct · PlanPolicy · APIKey
                               + Authorino API-key Secret      + Prometheus (usage)
 ```
 
@@ -63,8 +63,8 @@ Plaintext keys are never persisted: only `SHA-256(key)` and a masked preview.
 |---|---|
 | Catalog entry | `APIProduct` (`devportal.kuadrant.io/v1alpha1`) |
 | Plan / tier | `PlanPolicy` (`extensions.kuadrant.io/v1alpha1`) → matched by `secret.kuadrant.io/plan-id` |
-| Subscription request | `APIKeyRequest` |
-| Approved key | `APIKey` + Authorino `Secret` (`app=banking-api-apikey`, `managed-by=authorino`) |
+| Subscription request | portal-DB `Subscription` (no CR; approval happens in the portal) |
+| Approved key | Authorino `Secret` (`app=banking-api-apikey`, `authorino.kuadrant.io/managed-by=authorino`) — the label is the activation gate — plus a non-reconciled `APIKey` CR for traceability |
 | Auth scheme / hostname | `APIProduct.status.discoveredAuthScheme` / `APIKey.status.apiHostname` |
 | Usage | Prometheus (Envoy + Limitador metrics) |
 

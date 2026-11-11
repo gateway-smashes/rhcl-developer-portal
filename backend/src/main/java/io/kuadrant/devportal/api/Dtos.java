@@ -3,7 +3,6 @@ package io.kuadrant.devportal.api;
 import java.time.Instant;
 import java.util.List;
 
-import io.kuadrant.devportal.domain.ApiKey;
 import io.kuadrant.devportal.domain.ApiProduct;
 import io.kuadrant.devportal.domain.Application;
 import io.kuadrant.devportal.domain.ApplicationPlan;
@@ -70,13 +69,6 @@ public final class Dtos {
         public static ProfileDto of(PortalUser u, List<ApplicationDto> apps, List<SubscriptionDto> subs) {
             return new ProfileDto(u.id, u.username, u.email, u.displayName, u.organization,
                     List.copyOf(u.roles), apps, subs);
-        }
-    }
-
-    public record ApiKeyDto(Long id, String keyPreview, String status, Instant createdAt, Instant rotatedAt,
-            Instant revokedAt) {
-        public static ApiKeyDto of(ApiKey k) {
-            return new ApiKeyDto(k.id, k.keyPreview, k.status.name(), k.createdAt, k.rotatedAt, k.revokedAt);
         }
     }
 

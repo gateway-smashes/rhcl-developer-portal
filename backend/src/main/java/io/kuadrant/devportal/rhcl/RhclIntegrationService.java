@@ -13,9 +13,10 @@ import io.kuadrant.devportal.domain.Subscription;
  *   <li>{@code MockRhclIntegrationService} — default; generates keys/usage
  *       locally. Used for development and the skeleton walkthrough.</li>
  *   <li>{@code KubernetesRhclIntegrationService} — drives the real CRDs
- *       ({@code APIProduct}, {@code APIKeyRequest}, {@code APIKeyApproval},
- *       {@code APIKey}) and the Authorino Secret, and reads usage from
- *       Prometheus. Selected with {@code portal.rhcl.mode=kubernetes}.</li>
+ *       ({@code APIProduct}, {@code APIKey}) and the Authorino-managed API-key
+ *       {@code Secret} (whose {@code managed-by=authorino} label is the
+ *       activation gate), and reads usage from Prometheus. Selected with
+ *       {@code portal.rhcl.mode=kubernetes}.</li>
  * </ul>
  */
 public interface RhclIntegrationService {

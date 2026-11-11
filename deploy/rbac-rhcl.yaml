@@ -8,7 +8,7 @@ metadata:
   namespace: rhcl-apps
 rules:
   - apiGroups: ["devportal.kuadrant.io"]
-    resources: ["apiproducts", "apikeys", "apikeyrequests", "apikeyapprovals"]
+    resources: ["apiproducts", "apikeys"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["extensions.kuadrant.io"]
     resources: ["planpolicies"]

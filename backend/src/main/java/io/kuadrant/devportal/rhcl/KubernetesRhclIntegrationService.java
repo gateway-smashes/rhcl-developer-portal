@@ -24,16 +24,20 @@ import jakarta.inject.Inject;
 
 /**
  * Real RHCL/Kuadrant integration. Drives the DevPortal CRDs
- * ({@code devportal.kuadrant.io/v1alpha1}: APIProduct, APIKeyRequest, APIKey)
- * and the Authorino-managed API-key {@code Secret}. Active when
+ * ({@code devportal.kuadrant.io/v1alpha1}: APIProduct, APIKey) and the
+ * Authorino-managed API-key {@code Secret}. Active when
  * {@code portal.rhcl.mode=kubernetes}.
  *
- * <p>Key model: Authorino authenticates requests by selecting Secrets labelled
- * {@code app=<apiKeyAppLabel>} and {@code authorino.kuadrant.io/managed-by=authorino}.
- * The plan tier and user id ride as annotations
- * ({@code secret.kuadrant.io/plan-id}, {@code secret.kuadrant.io/user-id}); the
- * PlanPolicy predicates match on those. We create that Secret with the
- * generated key so the gateway accepts the consumer's test calls immediately.
+ * <p>Activation gate: Authorino authenticates requests by selecting Secrets
+ * labelled {@code app=<apiKeyAppLabel>} and
+ * {@code authorino.kuadrant.io/managed-by=authorino} — creating that labelled
+ * Secret is what activates a key (there is no {@code APIKeyRequest}/
+ * {@code APIKeyApproval} CR flow; approval happens in the portal DB). The plan
+ * tier and user id ride as annotations ({@code secret.kuadrant.io/plan-id},
+ * {@code secret.kuadrant.io/user-id}); the PlanPolicy predicates match on
+ * those. We create that Secret with the generated key so the gateway accepts
+ * the consumer's test calls immediately. The {@code APIKey} CR we also write is
+ * a non-reconciled record for traceability.
  */
 @LookupIfProperty(name = "portal.rhcl.mode", stringValue = "kubernetes")
 @ApplicationScoped
@@ -57,8 +61,6 @@ public class KubernetesRhclIntegrationService implements RhclIntegrationService 
 
     private static final ResourceDefinitionContext API_KEY = new ResourceDefinitionContext.Builder()
             .withGroup(GROUP).withVersion(VERSION).withKind("APIKey").withPlural("apikeys").withNamespaced(true).build();
-    private static final ResourceDefinitionContext API_KEY_REQUEST = new ResourceDefinitionContext.Builder()
-            .withGroup(GROUP).withVersion(VERSION).withKind("APIKeyRequest").withPlural("apikeyrequests").withNamespaced(true).build();
     private static final ResourceDefinitionContext API_PRODUCT = new ResourceDefinitionContext.Builder()
             .withGroup(GROUP).withVersion(VERSION).withKind("APIProduct").withPlural("apiproducts").withNamespaced(true).build();
 

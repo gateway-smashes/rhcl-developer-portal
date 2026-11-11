@@ -19,8 +19,8 @@ requests.
             └───────┬───────┘         └──────────┬───────────┘
                     │                            │
                     │ OIDC (Keycloak / RHBK)     │ RHCL CRDs
-                    │                            │ APIProduct, APIKey,
-                    │                            │ APIKeyApproval, PlanPolicy
+                    │                            │ APIProduct, APIKey, PlanPolicy
+                    │                            │ + Authorino Secret (key gate)
                     ▼                            ▼
             ┌───────────────┐         ┌──────────────────────┐
             │  Keycloak     │         │  OpenShift           │
@@ -29,8 +29,10 @@ requests.
 ```
 
 The backend reconciles its catalogue from the RHCL `APIProduct` CRs on
-the cluster, mints API keys as RHCL `APIKey` CRs, and translates
-admin approve/reject decisions into `APIKeyApproval` CRs. Read more in
+the cluster and, when an admin approves a subscription, provisions an
+Authorino-managed API-key `Secret` — its
+`authorino.kuadrant.io/managed-by=authorino` label is the activation
+gate — plus a non-reconciled `APIKey` CR for traceability. Read more in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Screenshots
