@@ -38,10 +38,12 @@ public class MCPDiscoveryService {
 
     private static final Logger LOG = Logger.getLogger(MCPDiscoveryService.class);
 
+    // RHCL 1.5 ships the MCP gateway GA at mcp.kuadrant.io/v1 and no longer
+    // serves the v1alpha1 CRD versions.
     private static final ResourceDefinitionContext MCP_SERVER_REGISTRATION =
             new ResourceDefinitionContext.Builder()
                     .withGroup("mcp.kuadrant.io")
-                    .withVersion("v1alpha1")
+                    .withVersion("v1")
                     .withPlural("mcpserverregistrations")
                     .withKind("MCPServerRegistration")
                     .withNamespaced(true)
@@ -50,7 +52,7 @@ public class MCPDiscoveryService {
     private static final ResourceDefinitionContext MCP_GATEWAY_EXTENSION =
             new ResourceDefinitionContext.Builder()
                     .withGroup("mcp.kuadrant.io")
-                    .withVersion("v1alpha1")
+                    .withVersion("v1")
                     .withPlural("mcpgatewayextensions")
                     .withKind("MCPGatewayExtension")
                     .withNamespaced(true)
@@ -86,13 +88,16 @@ public class MCPDiscoveryService {
             return;
         }
 
-        // Build a cheap (namespace -> publicHost) lookup. Multiple MCP
-        // gateways are rare but supported — first match wins.
+        // Build a cheap (namespace -> host) lookup. The endpoint we publish is
+        // consumer-facing, so prefer the MCPGatewayExtension's `publicHost`
+        // (the externally reachable gateway host) and fall back to
+        // `privateHost` only if no public host is set. Multiple MCP gateways
+        // are rare but supported — first match wins.
         Map<String, String> hostByNs = client.genericKubernetesResources(MCP_GATEWAY_EXTENSION)
                 .inAnyNamespace().list().getItems().stream()
                 .collect(java.util.stream.Collectors.toMap(
                         r -> r.getMetadata().getNamespace(),
-                        r -> Objects.toString(spec(r).get("privateHost"), ""),
+                        r -> gatewayHost(spec(r)),
                         (a, b) -> a));
 
         for (GenericKubernetesResource r : registrations) {
@@ -133,6 +138,12 @@ public class MCPDiscoveryService {
                 LOG.infof("Updated MCP product %s endpoint -> %s", productName, endpoint);
             }
         }
+    }
+
+    /** Consumer-facing gateway host: {@code publicHost}, else {@code privateHost}. */
+    private static String gatewayHost(Map<String, Object> spec) {
+        String publicHost = Objects.toString(spec.get("publicHost"), "");
+        return publicHost.isEmpty() ? Objects.toString(spec.get("privateHost"), "") : publicHost;
     }
 
     @SuppressWarnings("unchecked")
