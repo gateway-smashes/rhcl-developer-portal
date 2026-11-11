@@ -165,21 +165,33 @@ public class KubernetesRhclIntegrationService implements RhclIntegrationService 
         // does, and it reports as `source`. The regex matches whichever is
         // present so the dashboard works regardless of mesh topology.
         //
-        // Per-consumer filter: the AuthPolicy injects `x-consumer-id` whose
-        // value is the API-key Secret name (e.g. `apikey-banking-api-alice-3`),
-        // and the req041 Telemetry CR projects that header into the
-        // `request_headers_x_consumer_id` Prometheus label. With both in place
-        // analytics show only THIS subscription's traffic.
-        // The filter is strict — without the Telemetry CR the label is absent
-        // and this query returns zero. That's a visible-failure-mode on purpose
-        // (better than silently aggregating every consumer's traffic into the
-        // logged-in user's dashboard). Install req041 / the grafana role to
-        // populate the label.
+        // Per-consumer filter. The AuthPolicy sets the `x-consumer-id` request
+        // header, which the Telemetry CR projects into the
+        // `request_headers_x_consumer_id` metric label. Its value is the
+        // *canonical APIKey name* (e.g. `banking-api-alice-1`) — resolved by the
+        // AuthPolicy from the `devportal.kuadrant.io/apikey` label on whichever
+        // Secret Authorino matched, falling back to that Secret's own name.
+        //
+        // In RHCL 1.4+ two Secrets carry the same key value and are both valid
+        // Authorino identities: the plain source Secret this portal creates
+        // (`apikey-<name>`, referenced by APIKey.spec.secretRef) and the
+        // enforcement mirror the RHCL controller provisions in kuadrant-system
+        // (a random-hashed name, but carrying `devportal.kuadrant.io/apikey=<name>`).
+        // Which one authenticates a given request is not deterministic, so the
+        // emitted consumer id is EITHER the canonical name (`<name>`, from the
+        // mirror's label) OR the source Secret name (`apikey-<name>`, via the
+        // AuthPolicy fallback). We match both with an anchored regex so no
+        // traffic is dropped regardless of which identity served the request.
+        // (In 1.3 mode only the `apikey-<name>` form exists — the regex still
+        // matches it. Without the Telemetry CR the label is absent and this
+        // returns zero, which is the intended visible-failure-mode rather than
+        // silently aggregating every consumer's traffic.)
         String keyName = nameFromRef(subscription.rhclApiKeyRef);
-        String consumerId = keyName == null ? "" : "apikey-" + keyName;
+        String consumerFilter = keyName == null || keyName.isBlank() ? ""
+                : ",request_headers_x_consumer_id=~\"(apikey-)?" + promEscape(keyName) + "\"";
         String selector = "destination_workload=~\"" + workload + ".*\""
                 + ",reporter=~\"source|destination\""
-                + (consumerId.isBlank() ? "" : ",request_headers_x_consumer_id=\"" + consumerId + "\"");
+                + consumerFilter;
 
         long total = 0, success = 0, blocked = 0, e4 = 0, e5 = 0;
         var series = new java.util.ArrayList<UsageSummary.Point>();
@@ -275,6 +287,23 @@ public class KubernetesRhclIntegrationService implements RhclIntegrationService 
     private static String sanitize(String s) {
         return s.toLowerCase().replaceAll("[^a-z0-9-]", "-").replaceAll("-+", "-")
                 .replaceAll("^-|-$", "");
+    }
+
+    /**
+     * Escape a literal so it can be embedded safely in a PromQL (RE2) regex
+     * label matcher. {@link #sanitize(String)} already restricts key names to
+     * {@code [a-z0-9-]}, but escaping is cheap insurance against future changes.
+     */
+    static String promEscape(String s) {
+        StringBuilder sb = new StringBuilder(s.length() + 4);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if ("\\.+*?()|[]{}^$".indexOf(c) >= 0) {
+                sb.append('\\');
+            }
+            sb.append(c);
+        }
+        return sb.toString();
     }
 
     static String decodeSecretValue(Secret secret, String key) {
