@@ -41,7 +41,7 @@ public class MCPDiscoveryService {
     private static final ResourceDefinitionContext MCP_SERVER_REGISTRATION =
             new ResourceDefinitionContext.Builder()
                     .withGroup("mcp.kuadrant.io")
-                    .withVersion("v1alpha1")
+                    .withVersion("v1")
                     .withPlural("mcpserverregistrations")
                     .withKind("MCPServerRegistration")
                     .withNamespaced(true)
@@ -50,7 +50,7 @@ public class MCPDiscoveryService {
     private static final ResourceDefinitionContext MCP_GATEWAY_EXTENSION =
             new ResourceDefinitionContext.Builder()
                     .withGroup("mcp.kuadrant.io")
-                    .withVersion("v1alpha1")
+                    .withVersion("v1")
                     .withPlural("mcpgatewayextensions")
                     .withKind("MCPGatewayExtension")
                     .withNamespaced(true)
