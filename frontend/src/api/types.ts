@@ -116,4 +116,10 @@ export interface Usage {
   series: UsagePoint[];
   /** Per-API breakdown — only populated in the aggregate view, empty for drill-down. */
   topProducts: TopProduct[];
+  /** Where the numbers came from, so the UI never shows a misleading zero:
+   *  - "mock"         synthetic data (mock mode)
+   *  - "per-consumer" real, attributed via the TelemetryPolicy consumer label
+   *  - "unattributed" per-consumer projection missing → per-API totals (all consumers)
+   *  - "none"         metrics backend unavailable or genuinely no traffic */
+  metricsSource?: "mock" | "per-consumer" | "unattributed" | "none";
 }

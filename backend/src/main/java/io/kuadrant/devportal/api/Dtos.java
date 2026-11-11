@@ -74,11 +74,11 @@ public final class Dtos {
 
     public record UsageDto(long totalRequests, long successCount, long blockedCount, long error4xxCount,
             long error5xxCount, double avgLatencyMs, long limitRemaining, double usagePercent, Instant quotaResetAt,
-            List<UsageSummary.Point> series, List<TopProductDto> topProducts) {
+            List<UsageSummary.Point> series, List<TopProductDto> topProducts, String metricsSource) {
         public static UsageDto of(UsageSummary s) {
             return new UsageDto(s.totalRequests(), s.successCount(), s.blockedCount(), s.error4xxCount(),
                     s.error5xxCount(), s.avgLatencyMs(), s.limitRemaining(), s.usagePercent(), s.quotaResetAt(),
-                    s.series(), List.of());
+                    s.series(), List.of(), s.metricsSource());
         }
 
         /** Per-subscription input row for aggregate(). */
@@ -128,7 +128,21 @@ public final class Dtos {
                 .map(e -> new TopProductDto(e.getKey(), e.getValue()[0]))
                 .sorted((a, b) -> Long.compare(b.requestCount(), a.requestCount()))
                 .toList();
-            return new UsageDto(total, ok, blocked, e4, e5, latency, 0L, 0.0, Instant.EPOCH, merged, top);
+            // Roll the per-row sources up: any unattributed row taints the whole
+            // aggregate (so the UI warns); otherwise real > mock > none.
+            String source = rows.stream().map(r -> r.usage().metricsSource()).reduce(UsageSummary.SOURCE_NONE, (acc, s) -> {
+                if (UsageSummary.SOURCE_UNATTRIBUTED.equals(acc) || UsageSummary.SOURCE_UNATTRIBUTED.equals(s)) {
+                    return UsageSummary.SOURCE_UNATTRIBUTED;
+                }
+                if (UsageSummary.SOURCE_PER_CONSUMER.equals(acc) || UsageSummary.SOURCE_PER_CONSUMER.equals(s)) {
+                    return UsageSummary.SOURCE_PER_CONSUMER;
+                }
+                if (UsageSummary.SOURCE_MOCK.equals(acc) || UsageSummary.SOURCE_MOCK.equals(s)) {
+                    return UsageSummary.SOURCE_MOCK;
+                }
+                return UsageSummary.SOURCE_NONE;
+            });
+            return new UsageDto(total, ok, blocked, e4, e5, latency, 0L, 0.0, Instant.EPOCH, merged, top, source);
         }
     }
 

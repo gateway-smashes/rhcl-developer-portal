@@ -24,6 +24,7 @@ import {
 } from "recharts";
 import { useProfile, useRotateKey, useUsage } from "../api/hooks";
 import CredentialDialog from "../components/CredentialDialog";
+import UsageSourceNote from "../components/UsageSourceNote";
 import {
   Badge,
   Button,
@@ -205,6 +206,12 @@ export default function ApplicationDetail() {
           <Badge tone={health.tone}>● {health.label}</Badge>
         </div>
       </div>
+
+      {usage && (
+        <div className="mb-5">
+          <UsageSourceNote source={usage.metricsSource} />
+        </div>
+      )}
 
       {/* ---------- 5 KPI cards ---------- */}
       <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">

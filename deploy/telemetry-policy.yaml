@@ -1,0 +1,47 @@
+# RHCL 1.5 TelemetryPolicy — per-consumer usage attribution
+# ===========================================================================
+# Projects the Authorino-authenticated API-key consumer identity into a
+# per-request Prometheus metric label, so the developer portal can attribute
+# gateway traffic to a single subscription instead of showing per-API totals.
+#
+# The portal reads the label named by `portal.rhcl.consumer-metric-label`
+# (default `consumer`, overridable with RHCL_CONSUMER_METRIC_LABEL) and matches
+# it against the API-key Secret name, `apikey-<product>-<user>-<subId>`. Keep
+# the label name below in sync with that setting.
+#
+# Without this policy the per-consumer label is absent: the portal no longer
+# silently reports zero — it falls back to per-API totals and labels the
+# dashboard "showing per-API totals across all consumers" (see
+# KubernetesRhclIntegrationService.getUsage + UsageSourceNote.tsx). Installing
+# this policy is what turns on true per-subscription analytics.
+#
+# This manifest is deliberately NOT wired into kustomization.yaml: the
+# extensions.kuadrant.io API is young, so verify the schema against your
+# cluster before applying it manually:
+#
+#     oc explain telemetrypolicy.spec --api-version=extensions.kuadrant.io/v1alpha1
+#     oc apply -f deploy/telemetry-policy.yaml
+#
+# Adjust targetRef (your Kuadrant Gateway) and namespace to match your install.
+---
+apiVersion: extensions.kuadrant.io/v1alpha1
+kind: TelemetryPolicy
+metadata:
+  name: devportal-consumer-telemetry
+  namespace: rhcl-apps
+spec:
+  # Attach to the gateway that fronts the published APIs.
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: external
+  metrics:
+    # Add a `consumer` dimension to the gateway request metrics
+    # (istio_requests_total, istio_request_duration_milliseconds_*). The value
+    # is the authenticated API-key Secret name, which equals the value the
+    # portal queries for.
+    labels:
+      consumer:
+        # CEL over the Authorino auth result. `auth.identity.metadata.name` is
+        # the matched API-key Secret's name (e.g. apikey-banking-api-alice-3).
+        expression: auth.identity.metadata.name

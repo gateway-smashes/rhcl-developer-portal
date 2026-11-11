@@ -66,7 +66,7 @@ Plaintext keys are never persisted: only `SHA-256(key)` and a masked preview.
 | Subscription request | portal-DB `Subscription` (no CR; approval happens in the portal) |
 | Approved key | Authorino `Secret` (`app=banking-api-apikey`, `authorino.kuadrant.io/managed-by=authorino`) — the label is the activation gate — plus a non-reconciled `APIKey` CR for traceability |
 | Auth scheme / hostname | `APIProduct.status.discoveredAuthScheme` / `APIKey.status.apiHostname` |
-| Usage | Prometheus (Envoy + Limitador metrics) |
+| Usage | Prometheus (Envoy + Limitador metrics); per-consumer attribution via `TelemetryPolicy` (`extensions.kuadrant.io/v1alpha1`, see `deploy/telemetry-policy.yaml`) |
 
 ## 5. Security (spec §9)
 

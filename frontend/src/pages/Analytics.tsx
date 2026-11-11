@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { useProfile, useUsage } from "../api/hooks";
 import { PageHeader } from "../components/AppShell";
+import UsageSourceNote from "../components/UsageSourceNote";
 import { Card, CardBody, EmptyState, ProgressRing, Select, SectionHeading, Skeleton, Stat } from "../components/ui";
 import { compact } from "../lib/format";
 import { LineChart } from "lucide-react";
@@ -119,6 +120,7 @@ export default function Analytics() {
         <Skeleton className="h-96" />
       ) : (
         <div className="space-y-6">
+          <UsageSourceNote source={usage.metricsSource} />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <Stat
               label="Total Requests"

@@ -77,7 +77,8 @@ public class MockRhclIntegrationService implements RhclIntegrationService {
         double pct = Math.min(100.0, total / 50.0);
         Instant reset = Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
         return new UsageSummary(total, success, blocked, e4, e5,
-                12.0 + rnd.nextInt(40), Math.max(0, 5000 - total), pct, reset, series);
+                12.0 + rnd.nextInt(40), Math.max(0, 5000 - total), pct, reset, series,
+                UsageSummary.SOURCE_MOCK);
     }
 
     @Override

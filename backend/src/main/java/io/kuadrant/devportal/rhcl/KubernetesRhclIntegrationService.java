@@ -151,60 +151,57 @@ public class KubernetesRhclIntegrationService implements RhclIntegrationService 
         // Until portal.rhcl.prometheus-url is configured, return an empty-but-valid
         // summary so the dashboard renders a graceful empty state (spec §4.8/§10).
         if (!prometheus.enabled()) {
-            return emptyUsage();
+            return emptyUsage(UsageSummary.SOURCE_NONE);
         }
-        // Per-API (APIProduct) traffic from the Istio gateway. Per-consumer
-        // attribution would need a consumer-id metric label, which the gateway
-        // does not emit by default — documented in ARCHITECTURE.md.
         ApiProduct product = ApiProduct.findById(subscription.apiProductId);
         String workload = product != null ? product.name : "";
         if (workload.isBlank()) {
-            return emptyUsage();
+            return emptyUsage(UsageSummary.SOURCE_NONE);
         }
-        // Reporter: prefer `destination` (request-side sidecar emits with the
-        // workload's own perspective) but fall back to `source` since most
-        // backends in the lab don't run an Istio sidecar — only the gateway
-        // does, and it reports as `source`. The regex matches whichever is
-        // present so the dashboard works regardless of mesh topology.
-        //
-        // Per-consumer filter: the AuthPolicy injects `x-consumer-id` whose
-        // value is the API-key Secret name (e.g. `apikey-banking-api-alice-3`),
-        // and the req041 Telemetry CR projects that header into the
-        // `request_headers_x_consumer_id` Prometheus label. With both in place
-        // analytics show only THIS subscription's traffic.
-        // The filter is strict — without the Telemetry CR the label is absent
-        // and this query returns zero. That's a visible-failure-mode on purpose
-        // (better than silently aggregating every consumer's traffic into the
-        // logged-in user's dashboard). Install req041 / the grafana role to
-        // populate the label.
-        String keyName = nameFromRef(subscription.rhclApiKeyRef);
-        String consumerId = keyName == null ? "" : "apikey-" + keyName;
-        String selector = "destination_workload=~\"" + workload + ".*\""
-                + ",reporter=~\"source|destination\""
-                + (consumerId.isBlank() ? "" : ",request_headers_x_consumer_id=\"" + consumerId + "\"");
+        // Per-API (APIProduct) traffic from the Istio gateway. `reporter`
+        // matches whichever sidecar is present (source|destination) so the
+        // dashboard works regardless of mesh topology.
+        String apiSelector = "destination_workload=~\"" + workload + ".*\",reporter=~\"source|destination\"";
 
-        long total = 0, success = 0, blocked = 0, e4 = 0, e5 = 0;
-        var series = new java.util.ArrayList<UsageSummary.Point>();
-        for (PrometheusClient.Bucket b : prometheus.rangeByResponseCode(selector, query.from(), query.to(), query.stepSeconds())) {
-            long req = 0, ok = 0, blk = 0;
-            for (var e : b.byCode().entrySet()) {
-                long n = Math.round(e.getValue());
-                req += n;
-                String code = e.getKey();
-                if (code.equals("429")) {
-                    blk += n;
-                    blocked += n;
-                } else if (code.startsWith("2") || code.startsWith("3")) {
-                    ok += n;
-                    success += n;
-                } else if (code.startsWith("4")) {
-                    e4 += n;
-                } else if (code.startsWith("5")) {
-                    e5 += n;
+        // Per-consumer attribution: RHCL 1.5's TelemetryPolicy
+        // (deploy/telemetry-policy.yaml) projects the authenticated consumer
+        // identity into a metric label (config.consumerMetricLabel(), default
+        // `consumer`) whose value is the API-key Secret name. Prefer that so
+        // analytics show only THIS subscription's traffic.
+        //
+        // If the projection isn't installed the label is absent and the query
+        // yields no series. Rather than silently reporting zero (the old
+        // `request_headers_x_consumer_id` istio hack did exactly that), we fall
+        // back to per-API totals and flag the result as `unattributed` so the
+        // UI can say the numbers cover all consumers, not just this key.
+        String keyName = nameFromRef(subscription.rhclApiKeyRef);
+        String consumerValue = keyName == null ? "" : "apikey-" + keyName;
+
+        Agg agg;
+        String selector;
+        String source;
+        if (consumerValue.isBlank()) {
+            // No key ref to attribute by — per-API totals at best.
+            selector = apiSelector;
+            agg = aggregate(apiSelector, query);
+            source = agg.total > 0 ? UsageSummary.SOURCE_UNATTRIBUTED : UsageSummary.SOURCE_NONE;
+        } else {
+            String consumerSelector = apiSelector + "," + config.consumerMetricLabel() + "=\"" + consumerValue + "\"";
+            agg = aggregate(consumerSelector, query);
+            if (agg.total > 0) {
+                selector = consumerSelector;
+                source = UsageSummary.SOURCE_PER_CONSUMER;
+            } else {
+                Agg apiAgg = aggregate(apiSelector, query);
+                if (apiAgg.total > 0) {
+                    agg = apiAgg;
+                    selector = apiSelector;
+                    source = UsageSummary.SOURCE_UNATTRIBUTED;
+                } else {
+                    selector = consumerSelector;
+                    source = UsageSummary.SOURCE_NONE;
                 }
             }
-            total += req;
-            series.add(new UsageSummary.Point(b.timestamp(), req, ok, blk));
         }
 
         double latency = prometheus.queryScalar(
@@ -216,16 +213,49 @@ public class KubernetesRhclIntegrationService implements RhclIntegrationService 
 
         ApplicationPlan plan = ApplicationPlan.findById(subscription.applicationPlanId);
         long quota = plan != null && plan.dailyQuota > 0 ? plan.dailyQuota : 0;
-        long remaining = quota > 0 ? Math.max(0, quota - total) : 0;
-        double pct = quota > 0 ? Math.min(100.0, (total * 100.0) / quota) : 0.0;
+        long remaining = quota > 0 ? Math.max(0, quota - agg.total) : 0;
+        double pct = quota > 0 ? Math.min(100.0, (agg.total * 100.0) / quota) : 0.0;
         java.time.Instant reset = java.time.Instant.now().plusSeconds(86400).truncatedTo(java.time.temporal.ChronoUnit.DAYS);
 
-        return new UsageSummary(total, success, blocked, e4, e5, latency, remaining, pct, reset, series);
+        return new UsageSummary(agg.total, agg.success, agg.blocked, agg.e4, agg.e5, latency,
+                remaining, pct, reset, agg.series, source);
     }
 
-    private static UsageSummary emptyUsage() {
+    /** Summed response-code counters + a time series from a query_range. */
+    private Agg aggregate(String selector, UsageQuery query) {
+        Agg a = new Agg();
+        for (PrometheusClient.Bucket b : prometheus.rangeByResponseCode(selector, query.from(), query.to(), query.stepSeconds())) {
+            long req = 0, ok = 0, blk = 0;
+            for (var e : b.byCode().entrySet()) {
+                long n = Math.round(e.getValue());
+                req += n;
+                String code = e.getKey();
+                if (code.equals("429")) {
+                    blk += n;
+                    a.blocked += n;
+                } else if (code.startsWith("2") || code.startsWith("3")) {
+                    ok += n;
+                    a.success += n;
+                } else if (code.startsWith("4")) {
+                    a.e4 += n;
+                } else if (code.startsWith("5")) {
+                    a.e5 += n;
+                }
+            }
+            a.total += req;
+            a.series.add(new UsageSummary.Point(b.timestamp(), req, ok, blk));
+        }
+        return a;
+    }
+
+    private static final class Agg {
+        long total, success, blocked, e4, e5;
+        final java.util.List<UsageSummary.Point> series = new java.util.ArrayList<>();
+    }
+
+    private static UsageSummary emptyUsage(String source) {
         return new UsageSummary(0, 0, 0, 0, 0, 0, 0, 0.0,
-                java.time.Instant.now().plusSeconds(86400), java.util.List.of());
+                java.time.Instant.now().plusSeconds(86400), java.util.List.of(), source);
     }
 
     @Override

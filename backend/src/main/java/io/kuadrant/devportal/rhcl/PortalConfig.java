@@ -28,6 +28,18 @@ public interface PortalConfig {
     String apiKeyAppLabel();
 
     /**
+     * Prometheus metric label that carries the per-consumer identity, projected
+     * by the RHCL 1.5 {@code TelemetryPolicy} (see {@code deploy/telemetry-policy.yaml}).
+     * Usage is attributed to a subscription by matching this label against the
+     * API-key Secret name. Must match the label the deployed TelemetryPolicy
+     * projects. When the projection is absent the query returns no series and
+     * the dashboard degrades to clearly-labelled per-API totals instead of a
+     * silent zero.
+     */
+    @WithDefault("consumer")
+    String consumerMetricLabel();
+
+    /**
      * Whether to emit {@code spec.secretRef} on the {@code APIKey} CR.
      * Required by RHCL 1.4 (CRD v1alpha1 enforces it). Rejected by RHCL 1.3
      * (the field is not declared in the schema → API server returns 500
